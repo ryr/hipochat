@@ -40,9 +40,9 @@ REDIS_DB = os.getenv('HIPOCHAT_REDIS_DB', 0)
 PORT = os.getenv('HIPOCHAT_LISTEN_PORT', 8888)
 ADDRESS = os.getenv('HIPOCHAT_LISTEN_ADDRESS', '0.0.0.0')
 
-URL_PREFIX = os.getenv("HIPOCHAT_URL_PREFIX", "/")
+URL_PREFIX = os.getenv('HIPOCHAT_URL_PREFIX', '')
 
-REGULAR_MESSAGE_TYPE = os.getenv('HIPOCHAT_REGULAR_MESSAGE_TYPE', "message")
+REGULAR_MESSAGE_TYPE = os.getenv('HIPOCHAT_REGULAR_MESSAGE_TYPE', 'message')
 mtypes = os.getenv('HIPOCHAT_MESSAGE_TYPES', REGULAR_MESSAGE_TYPE)
 MESSAGE_TYPES = mtypes.split(',')
 
@@ -57,7 +57,7 @@ websockets = defaultdict(set)
 
 
 def push_notification_callback(*args, **kwargs):
-    logger.info("push notification sent")
+    logger.info('push notification sent')
 
 
 class PikaClient(object):
@@ -81,7 +81,7 @@ class PikaClient(object):
         credentials = pika.PlainCredentials(RABBIT_USERNAME, RABBIT_PASS)
         param = pika.ConnectionParameters(host=RABBIT_URL,
                                           port=5672,
-                                          virtual_host="/",
+                                          virtual_host='/',
                                           credentials=credentials)
         self.connection = TornadoConnection(param,
                                             on_open_callback=self.on_connected)
@@ -100,7 +100,7 @@ class PikaClient(object):
         self.channel = channel
 
         self.channel.exchange_declare(exchange='tornado',
-                                      type="direct",
+                                      type='direct',
                                       durable=False,
                                       auto_delete=True)
 
@@ -131,7 +131,7 @@ class PikaClient(object):
             try:
                 i.write_message(body)
             except:
-                logger.exception("exception while writing message to client")
+                logger.exception('exception while writing message to client')
 
     def on_basic_cancel(self, frame):
         logger.info('PikaClient: Basic Cancel Ok')
@@ -145,7 +145,7 @@ class PikaClient(object):
     def sample_message(self, ws_msg):
         token = json.loads(ws_msg)['token']
         properties = pika.BasicProperties(
-            content_type="text/plain", delivery_mode=1)
+            content_type='text/plain', delivery_mode=1)
         self.channel.basic_publish(exchange='tornado',
                                    routing_key=token,
                                    body=ws_msg,
@@ -168,7 +168,7 @@ def authenticate(request, **kwargs):
         profile_dict = json.loads(response.body)
         profile_dict.update({'token': token})
     except:
-        logger.exception("exception when authenticating")
+        logger.exception('exception when authenticating')
         raise gen.Return(None)
 
     if response.code == 200:
@@ -180,7 +180,7 @@ def authenticate(request, **kwargs):
 class IndexHandler(tornado.web.RequestHandler):
     @tornado.web.asynchronous
     def get(self, *args, **kwargs):
-        self.render("index.html")
+        self.render('index.html')
 
 
 class OldMessagesHandler(tornado.web.RequestHandler):
@@ -211,7 +211,7 @@ class OldMessagesHandler(tornado.web.RequestHandler):
         read_messages = [json.loads(v) for v in read_messages]
         unread_messages = [json.loads(v) for v in unread_messages]
 
-        self.set_header("Content-Type", "application/json")
+        self.set_header('Content-Type', 'application/json')
         messages = dict(read_messages=read_messages, unread_messages=unread_messages)
         self.write(json.dumps(dict(results=messages)))
 
@@ -285,9 +285,9 @@ class WebSocketChatHandler(tornado.websocket.WebSocketHandler):
         self.profile = yield authenticate(self.request, type='socket')
 
         if not self.profile:
-            logger.info("not authenticated... !!!")
+            logger.info('not authenticated... !!!')
             self.clear()
-            self.write_message(json.dumps(dict({"ERROR": "authentication error"})))
+            self.write_message(json.dumps(dict({'ERROR': 'authentication error'})))
             self.close()
             # if client closes the connection on_close is called, if we close the connection
             # on_close is not triggered, so we call it manually.
@@ -339,7 +339,7 @@ class WebSocketChatHandler(tornado.websocket.WebSocketHandler):
             client.fetch(request, callback=push_notification_callback)
 
     def on_close(self):
-        logger.info("closing connection")
+        logger.info('closing connection')
         websockets[self.chat_token].discard(self)
         ts = get_utc_timestamp()
         # save logout timestamp for read-unread messages
@@ -409,7 +409,7 @@ class HistoryHandler(tornado.web.RequestHandler):
             self.finish()
 
         # get latest message if ?limit=N is not provided.
-        limit = int(self.get_argument("limit", 0))
+        limit = int(self.get_argument('limit', 0))
         if limit > 0:
             limit -= 1
 
@@ -417,42 +417,42 @@ class HistoryHandler(tornado.web.RequestHandler):
         content = []
         for room in room_list.split(','):
             room_data = {
-                "room_name": room,
-                "unread_count": redis_client.get(
-                    '%s-%s-%s' % (REGULAR_MESSAGE_TYPE, room, auth_token.get("token"))) or 0,
-                "messages": [],
+                'room_name': room,
+                'unread_count': redis_client.get(
+                    '%s-%s-%s' % (REGULAR_MESSAGE_TYPE, room, auth_token.get('token'))) or 0,
+                'messages': [],
             }
 
             room_history = redis_client.zrange(room, 0, limit, withscores=True)
             for i in room_history:
                 data = json.loads(i[0])
                 data['timestamp'] = int(i[1])
-                room_data["messages"].append(data)
+                room_data['messages'].append(data)
             content.append(room_data)
 
-        content = {"results": content}
+        content = {'results': content}
 
         self.set_status(200)
-        self.set_header("Content-Type", "application/json")
+        self.set_header('Content-Type', 'application/json')
         self.write(json.dumps(content))
         self.finish()
 
 
-app = tornado.web.Application([(r'' + URL_PREFIX + '/chat/([a-zA-Z\-0-9\.:,_]+)/?', WebSocketChatHandler),
-                               (r'' + URL_PREFIX + '/item/([a-zA-Z\-0-9\.:,_]+)/?', ItemMessageHandler),
-                               (r'' + URL_PREFIX + '/notification/([a-zA-Z\-0-9\.:,_]+)/?', NotificationHandler),
-                               (r'' + URL_PREFIX + '/new-chat-room/([a-zA-Z\-0-9\.:,_]+)/?', NewChatRoomHandler),
-                               (r'' + URL_PREFIX + '/unsubscribe/([a-zA-Z\-0-9\.:,_]+)/?', NewChatRoomHandler),
-                               (r'' + URL_PREFIX + '/old/([a-zA-Z\-0-9\.:,_]+)/?', OldMessagesHandler),
-                               (r'' + URL_PREFIX + '/history/([a-zA-Z\-0-9\.:,_]+)/?', HistoryHandler),
-                               (r'' + URL_PREFIX + '/?', IndexHandler)])
+app = tornado.web.Application([(r'/' + URL_PREFIX + 'chat/([a-zA-Z\-0-9\.:,_]+)/?', WebSocketChatHandler),
+                               (r'/' + URL_PREFIX + 'item/([a-zA-Z\-0-9\.:,_]+)/?', ItemMessageHandler),
+                               (r'/' + URL_PREFIX + 'notification/([a-zA-Z\-0-9\.:,_]+)/?', NotificationHandler),
+                               (r'/' + URL_PREFIX + 'new-chat-room/([a-zA-Z\-0-9\.:,_]+)/?', NewChatRoomHandler),
+                               (r'/' + URL_PREFIX + 'unsubscribe/([a-zA-Z\-0-9\.:,_]+)/?', NewChatRoomHandler),
+                               (r'/' + URL_PREFIX + 'old/([a-zA-Z\-0-9\.:,_]+)/?', OldMessagesHandler),
+                               (r'/' + URL_PREFIX + 'history/([a-zA-Z\-0-9\.:,_]+)/?', HistoryHandler),
+                               (r'/' + URL_PREFIX + '?', IndexHandler)])
 
 pika_client = None
 
 
 def run():
     global pika_client
-    logger.info("Listening to %s:%s/%s", ADDRESS, PORT, URL_PREFIX)
+    logger.info('Listening to %s:%s/%s', ADDRESS, PORT, URL_PREFIX)
     app.listen(PORT, ADDRESS)
     ioloop = tornado.ioloop.IOLoop.instance()
     pika_client = PikaClient(ioloop)
