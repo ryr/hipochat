@@ -13,24 +13,25 @@ import redis
 import logging
 import datetime
 import calendar
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
-PUSH_NOTIFICATION_URL = os.getenv('HIPOCHAT_PUSH_NOTIFICATION_URL', None)
+PUSH_NOTIFICATION_URL = os.getenv('HIPOCHAT_PUSH_NOTIFICATION_URL', 'http://localhost:8194/push_notification_url')
 if not PUSH_NOTIFICATION_URL:
     raise Exception('we need a push notification url, please pass environment variable: HIPOCHAT_PUSH_NOTIFICATION_URL')
 
-PROFILE_URL = os.getenv('HIPOCHAT_PROFILE_URL', None)
+PROFILE_URL = os.getenv('HIPOCHAT_PROFILE_URL', 'http://localhost:8194/profile_url')
 if not PROFILE_URL:
     raise Exception('we need a push notification url, please pass environment variable: HIPOCHAT_PROFILE_URL')
 
-RABBIT_URL = os.getenv('HIPOCHAT_RABBIT_URL', None)
+RABBIT_URL = os.getenv('HIPOCHAT_RABBIT_URL', 'localhost')
 if not RABBIT_URL:
     raise Exception('we need a push notification url, please pass environment variable: HIPOCHAT_RABBIT_URL')
 
 RABBIT_USERNAME = os.getenv('HIPOCHAT_RABBIT_USERNAME', 'guest')
 RABBIT_PASS = os.getenv('HIPOCHAT_RABBIT_PASS', 'guest')
+RABBIT_VHOST = os.getenv('HIPOCHAT_RABBIT_VHOST', '/')
 
 REDIS_HOST = os.getenv('HIPOCHAT_REDIS_HOST', 'localhost')
 REDIS_PORT = os.getenv('HIPOCHAT_REDIS_PORT', 6379)
@@ -38,6 +39,8 @@ REDIS_DB = os.getenv('HIPOCHAT_REDIS_DB', 0)
 
 PORT = os.getenv('HIPOCHAT_LISTEN_PORT', 8888)
 ADDRESS = os.getenv('HIPOCHAT_LISTEN_ADDRESS', '0.0.0.0')
+
+URL_PREFIX = os.getenv("HIPOCHAT_URL_PREFIX", "/")
 
 REGULAR_MESSAGE_TYPE = os.getenv('HIPOCHAT_REGULAR_MESSAGE_TYPE', "message")
 mtypes = os.getenv('HIPOCHAT_MESSAGE_TYPES', REGULAR_MESSAGE_TYPE)
@@ -58,7 +61,6 @@ def push_notification_callback(*args, **kwargs):
 
 
 class PikaClient(object):
-
     def __init__(self, io_loop):
         self.connected = False
         self.connecting = False
@@ -69,8 +71,8 @@ class PikaClient(object):
     def connect(self):
 
         if self.connecting:
-                logger.info('PikaClient: Already connecting to RabbitMQ')
-                return
+            logger.info('PikaClient: Already connecting to RabbitMQ')
+            return
 
         logger.info('PikaClient: Connecting to RabbitMQ on port 5672, Object: %s', self)
 
@@ -176,14 +178,12 @@ def authenticate(request, **kwargs):
 
 
 class IndexHandler(tornado.web.RequestHandler):
-
     @tornado.web.asynchronous
     def get(self, *args, **kwargs):
         self.render("index.html")
 
 
 class OldMessagesHandler(tornado.web.RequestHandler):
-
     @gen.coroutine
     def get(self, *args, **kwargs):
         authentication = yield authenticate(self.request)
@@ -217,7 +217,6 @@ class OldMessagesHandler(tornado.web.RequestHandler):
 
 
 class ItemMessageHandler(tornado.web.RequestHandler):
-
     @gen.coroutine
     def post(self, *args, **kwargs):
         chat_token = args[0]
@@ -348,7 +347,6 @@ class WebSocketChatHandler(tornado.websocket.WebSocketHandler):
 
 
 class NotificationHandler(tornado.web.RequestHandler):
-
     @gen.coroutine
     def get(self, *args, **kwargs):
         auth_token = yield authenticate(self.request)
@@ -364,7 +362,6 @@ class NotificationHandler(tornado.web.RequestHandler):
 
 
 class NewChatRoomHandler(tornado.web.RequestHandler):
-
     # SEND THE CHAT ROOM USERS ARRAY
     def post(self, *args, **kwargs):
         chat_token = args[0]
@@ -382,7 +379,6 @@ class NewChatRoomHandler(tornado.web.RequestHandler):
 
 
 class UnsubscribeHandler(tornado.web.RequestHandler):
-
     def post(self, *args, **kwargs):
         # TODO: unsubscribe from rabbitmq, close socket etc...
         chat_token = args[0]
@@ -404,7 +400,6 @@ class UnsubscribeHandler(tornado.web.RequestHandler):
 
 
 class HistoryHandler(tornado.web.RequestHandler):
-
     @gen.coroutine
     def get(self, room_list):
 
@@ -423,7 +418,8 @@ class HistoryHandler(tornado.web.RequestHandler):
         for room in room_list.split(','):
             room_data = {
                 "room_name": room,
-                "unread_count": redis_client.get('%s-%s-%s' % (REGULAR_MESSAGE_TYPE, room, auth_token.get("token"))) or 0,
+                "unread_count": redis_client.get(
+                    '%s-%s-%s' % (REGULAR_MESSAGE_TYPE, room, auth_token.get("token"))) or 0,
                 "messages": [],
             }
 
@@ -442,22 +438,21 @@ class HistoryHandler(tornado.web.RequestHandler):
         self.finish()
 
 
-
-app = tornado.web.Application([(r'/talk/chat/([a-zA-Z\-0-9\.:,_]+)/?', WebSocketChatHandler),
-                               (r'/talk/item/([a-zA-Z\-0-9\.:,_]+)/?', ItemMessageHandler),
-                               (r'/talk/notification/([a-zA-Z\-0-9\.:,_]+)/?', NotificationHandler),
-                               (r'/talk/new-chat-room/([a-zA-Z\-0-9\.:,_]+)/?', NewChatRoomHandler),
-                               (r'/talk/unsubscribe/([a-zA-Z\-0-9\.:,_]+)/?', NewChatRoomHandler),
-                               (r'/talk/old/([a-zA-Z\-0-9\.:,_]+)/?', OldMessagesHandler),
-                               (r'/talk/history/([a-zA-Z\-0-9\.:,_]+)/?', HistoryHandler),
-                               (r'/talk/?', IndexHandler)])
+app = tornado.web.Application([(r'' + URL_PREFIX + '/chat/([a-zA-Z\-0-9\.:,_]+)/?', WebSocketChatHandler),
+                               (r'' + URL_PREFIX + '/item/([a-zA-Z\-0-9\.:,_]+)/?', ItemMessageHandler),
+                               (r'' + URL_PREFIX + '/notification/([a-zA-Z\-0-9\.:,_]+)/?', NotificationHandler),
+                               (r'' + URL_PREFIX + '/new-chat-room/([a-zA-Z\-0-9\.:,_]+)/?', NewChatRoomHandler),
+                               (r'' + URL_PREFIX + '/unsubscribe/([a-zA-Z\-0-9\.:,_]+)/?', NewChatRoomHandler),
+                               (r'' + URL_PREFIX + '/old/([a-zA-Z\-0-9\.:,_]+)/?', OldMessagesHandler),
+                               (r'' + URL_PREFIX + '/history/([a-zA-Z\-0-9\.:,_]+)/?', HistoryHandler),
+                               (r'' + URL_PREFIX + '/?', IndexHandler)])
 
 pika_client = None
 
 
 def run():
     global pika_client
-    logger.info("Listening to %s:%s", ADDRESS, PORT)
+    logger.info("Listening to %s:%s/%s", ADDRESS, PORT, URL_PREFIX)
     app.listen(PORT, ADDRESS)
     ioloop = tornado.ioloop.IOLoop.instance()
     pika_client = PikaClient(ioloop)
