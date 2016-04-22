@@ -12,16 +12,17 @@ from tornado.httpclient import AsyncHTTPClient, HTTPRequest
 import redis
 import logging
 import datetime
+import time
 import calendar
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-PUSH_NOTIFICATION_URL = os.getenv('HIPOCHAT_PUSH_NOTIFICATION_URL', 'http://localhost:8194/push_notification_url')
+PUSH_NOTIFICATION_URL = os.getenv('HIPOCHAT_PUSH_NOTIFICATION_URL', 'http://localhost:8080/push_notification_url')
 if not PUSH_NOTIFICATION_URL:
     raise Exception('we need a push notification url, please pass environment variable: HIPOCHAT_PUSH_NOTIFICATION_URL')
 
-PROFILE_URL = os.getenv('HIPOCHAT_PROFILE_URL', 'http://localhost:8194/profile_url')
+PROFILE_URL = os.getenv('HIPOCHAT_PROFILE_URL', 'http://localhost:8080/profile_url')
 if not PROFILE_URL:
     raise Exception('we need a push notification url, please pass environment variable: HIPOCHAT_PROFILE_URL')
 
@@ -50,7 +51,14 @@ NOTIFIABLE_MESSAGE_TYPES = os.getenv('HIPOCHAT_NOTIFIABLE_MESSAGE_TYPES', mtypes
 
 # some sanity checks
 REDIS_CONNECTION = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
-REDIS_CONNECTION.ping()
+ping = False
+ping_attempt = 20
+while ping is False and ping_attempt > 0:
+    try:
+        ping = REDIS_CONNECTION.ping()
+    except:
+        ping_attempt -= 1
+    time.sleep(1)
 
 pika_connected = False
 websockets = defaultdict(set)
