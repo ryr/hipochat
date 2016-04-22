@@ -19,17 +19,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 PUSH_NOTIFICATION_URL = os.getenv('HIPOCHAT_PUSH_NOTIFICATION_URL', 'http://localhost:8080/push_notification_url')
-if not PUSH_NOTIFICATION_URL:
-    raise Exception('we need a push notification url, please pass environment variable: HIPOCHAT_PUSH_NOTIFICATION_URL')
-
 PROFILE_URL = os.getenv('HIPOCHAT_PROFILE_URL', 'http://localhost:8080/profile_url')
-if not PROFILE_URL:
-    raise Exception('we need a push notification url, please pass environment variable: HIPOCHAT_PROFILE_URL')
 
 RABBIT_URL = os.getenv('HIPOCHAT_RABBIT_URL', 'localhost')
-if not RABBIT_URL:
-    raise Exception('we need a push notification url, please pass environment variable: HIPOCHAT_RABBIT_URL')
-
 RABBIT_USERNAME = os.getenv('HIPOCHAT_RABBIT_USERNAME', 'guest')
 RABBIT_PASS = os.getenv('HIPOCHAT_RABBIT_PASS', 'guest')
 RABBIT_VHOST = os.getenv('HIPOCHAT_RABBIT_VHOST', '/')
